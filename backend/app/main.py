@@ -17,7 +17,7 @@ print("FRONTEND_URL =", settings.frontend_url)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        settings.frontend_url,
+        settings.frontend_url.rstrip("/"),
         "http://localhost:3000",
     ],
     allow_credentials=True,
