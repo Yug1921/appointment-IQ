@@ -310,7 +310,7 @@ I'll check availability and handle the rest.`;
                     AI Assistant
                   </p>
                   <p className="text-xs" style={{ color: "#5A5A70" }}>
-                    AppointmentIQ · Llama 3.3 70B
+                    AppointmentIQ 
                   </p>
                 </div>
               </div>
