@@ -7,11 +7,13 @@ import { cn } from "@/lib/utils";
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
 
-interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps {
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;
+  disabled?: boolean;
+  type?: "button" | "submit" | "reset";
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
   children: React.ReactNode;
   className?: string;
 }
@@ -40,24 +42,26 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       size = "md",
       loading = false,
       disabled = false,
+      type = "button",
+      onClick,
       children,
       className,
-      ...props
     },
     ref
   ) => {
     return (
       <motion.button
         ref={ref}
+        type={type}
         whileTap={{ scale: 0.97 }}
         disabled={disabled || loading}
+        onClick={onClick}
         className={cn(
           "font-medium transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed",
           variantStyles[variant],
           sizeStyles[size],
           className
         )}
-        {...props}
       >
         {loading && (
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />

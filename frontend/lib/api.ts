@@ -1,3 +1,5 @@
+// api.ts
+
 import axios, { AxiosInstance } from "axios";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -7,6 +9,13 @@ export const apiClient: AxiosInstance = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+});
+
+apiClient.interceptors.request.use((config) => {
+  if (config.url && !config.url.includes("?") && !config.url.endsWith("/")) {
+    config.url = config.url + "/";
+  }
+  return config;
 });
 
 // Types
@@ -156,3 +165,4 @@ export async function getAppointmentById(id: string): Promise<Appointment> {
   const response = await apiClient.get(`/appointments/${id}`);
   return response.data;
 }
+

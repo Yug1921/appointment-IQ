@@ -1,3 +1,4 @@
+// appointmentStore.ts
 import { create } from "zustand";
 import {
   getAppointments as fetchAppointmentsAPI,
