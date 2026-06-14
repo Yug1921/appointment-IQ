@@ -226,7 +226,18 @@ export default function ChatWidget() {
     inputRef.current?.focus();
   }
 
-  const WELCOME = "Hi! I'm your AppointmentIQ assistant. Tell me when you'd like to book — for example:\n\n\"Book a meeting with Alex on Friday at 2pm for a project review\"\n\nI'll check availability and handle the rest.";
+const WELCOME = `Hi! I'm your AppointmentIQ assistant. Tell me when you'd like to book — for example:
+
+"Book a meeting with Ajay on Friday at 2pm for a project review"
+
+Please provide the following details:
+• Full Name
+• Email Address
+• Purpose (e.g., Project Review, Onboarding, Client Meeting)
+• Preferred Date
+• Duration
+
+I'll check availability and handle the rest.`;
 
   return (
     <>
