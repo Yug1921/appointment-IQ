@@ -1,5 +1,3 @@
-// api.ts
-
 import axios, { AxiosInstance } from "axios";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -122,6 +120,24 @@ export async function cancelAppointment(id: string): Promise<void> {
   await apiClient.delete(`/appointments/${id}`);
 }
 
+/**
+ * Restore a cancelled appointment back to "confirmed".
+ * Throws (with response.status === 409) if the slot has since been taken
+ * by another appointment.
+ */
+export async function restoreAppointment(id: string): Promise<Appointment> {
+  const response = await apiClient.patch(`/appointments/${id}/restore`);
+  return response.data;
+}
+
+/**
+ * Permanently delete an appointment row from the database.
+ * This cannot be undone — unlike cancelAppointment, which is a soft delete.
+ */
+export async function permanentlyDeleteAppointment(id: string): Promise<void> {
+  await apiClient.delete(`/appointments/${id}/permanent`);
+}
+
 export async function getAvailableSlots(
   date: string,
   duration?: number
@@ -165,4 +181,3 @@ export async function getAppointmentById(id: string): Promise<Appointment> {
   const response = await apiClient.get(`/appointments/${id}`);
   return response.data;
 }
-

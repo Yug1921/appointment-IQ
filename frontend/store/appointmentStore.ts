@@ -25,9 +25,25 @@ interface AppointmentStore {
 
 export const useAppointmentStore = create<AppointmentStore>((set) => {
   // Subscribe to realtime appointments
-  const unsubscribe = subscribeToAppointments((appointment) => {
+  const unsubscribe = subscribeToAppointments(
+  (appointment, eventType, oldId) => {
     set((state) => {
-      const exists = state.appointments.find((a) => a.id === appointment.id);
+      if (eventType === "DELETE") {
+        return {
+          appointments: state.appointments.filter(
+            (a) => a.id !== oldId
+          ),
+        };
+      }
+
+      if (!appointment) {
+        return state;
+      }
+
+      const exists = state.appointments.find(
+        (a) => a.id === appointment.id
+      );
+
       if (exists) {
         return {
           appointments: state.appointments.map((a) =>
@@ -35,11 +51,13 @@ export const useAppointmentStore = create<AppointmentStore>((set) => {
           ),
         };
       }
+
       return {
         appointments: [...state.appointments, appointment],
       };
     });
-  });
+  }
+);
 
   return {
     appointments: [],

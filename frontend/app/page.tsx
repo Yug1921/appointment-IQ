@@ -8,18 +8,18 @@ import {
   AlertCircle,
   CalendarX,
   Plus,
-  Eye,
   ChevronRight,
   Clock,
   TrendingUp,
 } from "lucide-react";
-import { format, isToday, parseISO, startOfDay, endOfDay, isSameDay } from "date-fns";
+import { format, isToday, parseISO, isSameDay } from "date-fns";
 import { useAppointmentStore } from "@/store/appointmentStore";
 import { Appointment } from "@/lib/api";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import BookingModal from "@/components/appointments/BookingModal";
 import AppointmentDetail from "@/components/appointments/AppointmentDetail";
+import CancelledAppointmentsModal from "@/components/appointments/CancelledAppointmentsModal";
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
@@ -39,12 +39,8 @@ function StatCard({ label, value, icon, accent, sublabel }: StatCardProps) {
         background: "#111118",
         borderColor: "#2A2A38",
       }}
-      onMouseEnter={(e) =>
-        (e.currentTarget.style.borderColor = "#3A3A50")
-      }
-      onMouseLeave={(e) =>
-        (e.currentTarget.style.borderColor = "#2A2A38")
-      }
+      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#3A3A50")}
+      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#2A2A38")}
     >
       {/* left accent bar */}
       <div
@@ -55,7 +51,12 @@ function StatCard({ label, value, icon, accent, sublabel }: StatCardProps) {
         <div>
           <p
             className="font-caps mb-3"
-            style={{ color: "#5A5A70", fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase" }}
+            style={{
+              color: "#5A5A70",
+              fontSize: 11,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
           >
             {label}
           </p>
@@ -92,7 +93,6 @@ function AppointmentRow({
   onClick: () => void;
 }) {
   const start = parseISO(appt.start_time);
-  const end = parseISO(appt.end_time);
 
   return (
     <div
@@ -123,7 +123,10 @@ function AppointmentRow({
 
       {/* info */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate" style={{ color: "#F4F4F6" }}>
+        <p
+          className="text-sm font-medium truncate"
+          style={{ color: "#F4F4F6" }}
+        >
           {appt.name}
         </p>
         <p className="text-xs truncate" style={{ color: "#9090A8" }}>
@@ -132,7 +135,10 @@ function AppointmentRow({
       </div>
 
       {/* duration */}
-      <div className="shrink-0 flex items-center gap-1" style={{ color: "#5A5A70" }}>
+      <div
+        className="shrink-0 flex items-center gap-1"
+        style={{ color: "#5A5A70" }}
+      >
         <Clock size={12} />
         <span className="text-xs">{appt.duration_minutes}m</span>
       </div>
@@ -164,9 +170,16 @@ function TodayTimeline({
   const todayAppts = useMemo(
     () =>
       appointments
-        .filter((a) => isSameDay(parseISO(a.start_time), new Date()) && a.status !== "cancelled")
-        .sort((a, b) => parseISO(a.start_time).getTime() - parseISO(b.start_time).getTime()),
-    [appointments]
+        .filter(
+          (a) =>
+            isSameDay(parseISO(a.start_time), new Date()) &&
+            a.status !== "cancelled",
+        )
+        .sort(
+          (a, b) =>
+            parseISO(a.start_time).getTime() - parseISO(b.start_time).getTime(),
+        ),
+    [appointments],
   );
 
   const statusColor: Record<string, string> = {
@@ -188,11 +201,20 @@ function TodayTimeline({
       >
         <div>
           <p
-            style={{ fontSize: 11, color: "#5A5A70", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 500 }}
+            style={{
+              fontSize: 11,
+              color: "#5A5A70",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              fontWeight: 500,
+            }}
           >
             Today
           </p>
-          <p className="text-sm font-semibold mt-0.5" style={{ color: "#F4F4F6" }}>
+          <p
+            className="text-sm font-semibold mt-0.5"
+            style={{ color: "#F4F4F6" }}
+          >
             {format(new Date(), "EEEE, MMMM d")}
           </p>
         </div>
@@ -225,15 +247,24 @@ function TodayTimeline({
                   }}
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: "#F4F4F6" }}>
+                    <p
+                      className="text-sm font-medium truncate"
+                      style={{ color: "#F4F4F6" }}
+                    >
                       {appt.name}
                     </p>
-                    <p className="text-xs truncate" style={{ color: "#9090A8" }}>
+                    <p
+                      className="text-xs truncate"
+                      style={{ color: "#9090A8" }}
+                    >
                       {appt.purpose}
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-xs font-medium" style={{ color: "#F4F4F6" }}>
+                    <p
+                      className="text-xs font-medium"
+                      style={{ color: "#F4F4F6" }}
+                    >
                       {format(parseISO(appt.start_time), "h:mm a")}
                     </p>
                     <p className="text-xs" style={{ color: "#5A5A70" }}>
@@ -256,21 +287,22 @@ export default function DashboardPage() {
   const { appointments, fetchAppointments, isLoading } = useAppointmentStore();
   const [bookingOpen, setBookingOpen] = useState(false);
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
+  const [cancelledModalOpen, setCancelledModalOpen] = useState(false);
 
   useEffect(() => {
     fetchAppointments();
   }, [fetchAppointments]);
 
   // Stats — current month
-  const now = new Date();
-  const monthAppts = useMemo(
-    () =>
-      appointments.filter((a) => {
-        const d = parseISO(a.start_time);
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-      }),
-    [appointments]
-  );
+  const monthAppts = useMemo(() => {
+    const now = new Date();
+    return appointments.filter((a) => {
+      const d = parseISO(a.start_time);
+      return (
+        d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+      );
+    });
+  }, [appointments]);
 
   const stats = useMemo(
     () => ({
@@ -279,7 +311,18 @@ export default function DashboardPage() {
       pending: monthAppts.filter((a) => a.status === "pending").length,
       cancelled: monthAppts.filter((a) => a.status === "cancelled").length,
     }),
-    [monthAppts]
+    [monthAppts],
+  );
+
+  const cancelledAppointments = useMemo(
+    () =>
+      appointments
+        .filter((a) => a.status === "cancelled")
+        .sort(
+          (a, b) =>
+            parseISO(b.start_time).getTime() - parseISO(a.start_time).getTime(),
+        ),
+    [appointments],
   );
 
   // Upcoming — next 5 non-cancelled from now
@@ -289,11 +332,14 @@ export default function DashboardPage() {
         .filter(
           (a) =>
             a.status !== "cancelled" &&
-            parseISO(a.start_time).getTime() >= Date.now()
+            parseISO(a.start_time).getTime() >= Date.now(),
         )
-        .sort((a, b) => parseISO(a.start_time).getTime() - parseISO(b.start_time).getTime())
+        .sort(
+          (a, b) =>
+            parseISO(a.start_time).getTime() - parseISO(b.start_time).getTime(),
+        )
         .slice(0, 5),
-    [appointments]
+    [appointments],
   );
 
   return (
@@ -304,18 +350,27 @@ export default function DashboardPage() {
         style={{ background: "#0A0A0F", color: "#F4F4F6" }}
       >
         <div className="max-w-screen-xl mx-auto px-6 py-8">
-
           {/* ── page header ── */}
           <div className="flex items-end justify-between mb-8">
             <div>
               <p
-                style={{ fontSize: 11, color: "#5A5A70", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 500 }}
+                style={{
+                  fontSize: 11,
+                  color: "#5A5A70",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  fontWeight: 500,
+                }}
               >
                 {format(new Date(), "EEEE, MMMM d · yyyy")}
               </p>
               <h1
                 className="mt-1 font-semibold"
-                style={{ fontSize: 24, letterSpacing: "-0.02em", color: "#F4F4F6" }}
+                style={{
+                  fontSize: 24,
+                  letterSpacing: "-0.02em",
+                  color: "#F4F4F6",
+                }}
               >
                 Dashboard
               </h1>
@@ -349,24 +404,34 @@ export default function DashboardPage() {
               accent="#F59E0B"
               sublabel="awaiting confirmation"
             />
-            <StatCard
-              label="Cancelled"
-              value={stats.cancelled}
-              icon={<XCircle size={18} />}
-              accent="#EF4444"
-              sublabel="this month"
-            />
+            <div
+              onClick={() => setCancelledModalOpen(true)}
+              className="cursor-pointer"
+            >
+              <StatCard
+                label="Cancelled"
+                value={stats.cancelled}
+                icon={<XCircle size={18} />}
+                accent="#EF4444"
+                sublabel="click to manage"
+              />
+            </div>
           </div>
 
           {/* ── main grid ── */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-
             {/* ── upcoming ── (3/5) */}
             <div className="lg:col-span-3 flex flex-col gap-3">
               {/* section header */}
               <div className="flex items-center justify-between">
                 <p
-                  style={{ fontSize: 11, color: "#5A5A70", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 500 }}
+                  style={{
+                    fontSize: 11,
+                    color: "#5A5A70",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    fontWeight: 500,
+                  }}
                 >
                   Upcoming
                 </p>
@@ -374,8 +439,12 @@ export default function DashboardPage() {
                   href="/appointments"
                   className="text-xs font-medium flex items-center gap-1 transition-colors duration-150"
                   style={{ color: "#6366F1" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "#A78BFA")}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = "#6366F1")}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.color = "#A78BFA")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.color = "#6366F1")
+                  }
                 >
                   View all
                   <ChevronRight size={12} />
@@ -389,7 +458,11 @@ export default function DashboardPage() {
                     <div
                       key={i}
                       className="rounded-lg border px-4 py-3.5 animate-pulse"
-                      style={{ background: "#111118", borderColor: "#2A2A38", height: 64 }}
+                      style={{
+                        background: "#111118",
+                        borderColor: "#2A2A38",
+                        height: 64,
+                      }}
                     />
                   ))}
                 </div>
@@ -400,7 +473,10 @@ export default function DashboardPage() {
                 >
                   <CalendarX size={32} style={{ color: "#3A3A50" }} />
                   <div className="text-center">
-                    <p className="text-sm font-medium" style={{ color: "#9090A8" }}>
+                    <p
+                      className="text-sm font-medium"
+                      style={{ color: "#9090A8" }}
+                    >
                       No upcoming appointments
                     </p>
                     <p className="text-xs mt-1" style={{ color: "#5A5A70" }}>
@@ -440,13 +516,20 @@ export default function DashboardPage() {
                 >
                   <div
                     className="p-2 rounded-md shrink-0"
-                    style={{ background: "rgba(99,102,241,0.12)", color: "#6366F1" }}
+                    style={{
+                      background: "rgba(99,102,241,0.12)",
+                      color: "#6366F1",
+                    }}
                   >
                     <TrendingUp size={16} />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs font-medium" style={{ color: "#F4F4F6" }}>
-                      {Math.round((stats.confirmed / stats.total) * 100)}% confirmation rate
+                    <p
+                      className="text-xs font-medium"
+                      style={{ color: "#F4F4F6" }}
+                    >
+                      {Math.round((stats.confirmed / stats.total) * 100)}%
+                      confirmation rate
                     </p>
                     <p className="text-xs" style={{ color: "#5A5A70" }}>
                       {stats.confirmed} of {stats.total} appointments confirmed
@@ -478,6 +561,15 @@ export default function DashboardPage() {
           onUpdate={() => fetchAppointments()}
         />
       )}
+      
+      <CancelledAppointmentsModal
+        isOpen={cancelledModalOpen}
+        onClose={() => setCancelledModalOpen(false)}
+        appointments={cancelledAppointments}
+        onUpdate={() => {
+          fetchAppointments();
+        }}
+      />
     </>
   );
 }

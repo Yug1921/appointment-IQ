@@ -47,6 +47,22 @@ def send_confirmation_email(appointment: AppointmentResponse):
         print(f"Email sending failed (non-critical): {str(e)}")
 
 
+def _to_response(apt: dict) -> AppointmentResponse:
+    """Convert a raw Supabase row into an AppointmentResponse."""
+    return AppointmentResponse(
+        id=apt["id"],
+        name=apt["name"],
+        email=apt["email"],
+        purpose=apt["purpose"],
+        start_time=datetime.fromisoformat(apt["start_time"].replace("Z", "+00:00")),
+        end_time=datetime.fromisoformat(apt["end_time"].replace("Z", "+00:00")),
+        status=apt["status"],
+        duration_minutes=apt["duration_minutes"],
+        notes=apt.get("notes"),
+        created_at=datetime.fromisoformat(apt["created_at"].replace("Z", "+00:00")),
+    )
+
+
 @router.get("/")
 async def list_appointments(
     date_filter: Optional[date] = Query(None, alias="date"),
@@ -70,7 +86,7 @@ async def list_appointments(
         response = query.execute()
         appointments = response.data
         
-        return [AppointmentResponse(**apt) for apt in appointments]
+        return [_to_response(apt) for apt in appointments]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -107,18 +123,7 @@ async def create_appointment(appointment: AppointmentCreate) -> AppointmentRespo
         }).execute()
         
         created_appointment = result.data[0]
-        apt_response = AppointmentResponse(
-            id=created_appointment["id"],
-            name=created_appointment["name"],
-            email=created_appointment["email"],
-            purpose=created_appointment["purpose"],
-            start_time=datetime.fromisoformat(created_appointment["start_time"].replace("Z", "+00:00")),
-            end_time=datetime.fromisoformat(created_appointment["end_time"].replace("Z", "+00:00")),
-            status=created_appointment["status"],
-            duration_minutes=created_appointment["duration_minutes"],
-            notes=created_appointment.get("notes"),
-            created_at=datetime.fromisoformat(created_appointment["created_at"].replace("Z", "+00:00")),
-        )
+        apt_response = _to_response(created_appointment)
         
         # Send confirmation email (fire and forget)
         asyncio.create_task(
@@ -144,19 +149,7 @@ async def get_appointment(id: str) -> AppointmentResponse:
         if not result.data:
             raise HTTPException(status_code=404, detail="Appointment not found")
         
-        apt = result.data[0]
-        return AppointmentResponse(
-            id=apt["id"],
-            name=apt["name"],
-            email=apt["email"],
-            purpose=apt["purpose"],
-            start_time=datetime.fromisoformat(apt["start_time"].replace("Z", "+00:00")),
-            end_time=datetime.fromisoformat(apt["end_time"].replace("Z", "+00:00")),
-            status=apt["status"],
-            duration_minutes=apt["duration_minutes"],
-            notes=apt.get("notes"),
-            created_at=datetime.fromisoformat(apt["created_at"].replace("Z", "+00:00")),
-        )
+        return _to_response(result.data[0])
     except HTTPException:
         raise
     except Exception as e:
@@ -184,19 +177,79 @@ async def update_appointment(id: str, update: AppointmentUpdate) -> AppointmentR
         if not result.data:
             raise HTTPException(status_code=404, detail="Appointment not found")
         
+        return _to_response(result.data[0])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{id}/restore")
+async def restore_appointment(id: str) -> AppointmentResponse:
+    """
+    Restore a cancelled appointment back to 'confirmed'.
+    Checks that the original slot hasn't been taken by another
+    appointment in the meantime — returns 409 if it has.
+    """
+    supabase = get_supabase()
+
+    try:
+        result = supabase.table("appointments").select("*").eq("id", id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Appointment not found")
+
         apt = result.data[0]
-        return AppointmentResponse(
-            id=apt["id"],
-            name=apt["name"],
-            email=apt["email"],
-            purpose=apt["purpose"],
-            start_time=datetime.fromisoformat(apt["start_time"].replace("Z", "+00:00")),
-            end_time=datetime.fromisoformat(apt["end_time"].replace("Z", "+00:00")),
-            status=apt["status"],
-            duration_minutes=apt["duration_minutes"],
-            notes=apt.get("notes"),
-            created_at=datetime.fromisoformat(apt["created_at"].replace("Z", "+00:00")),
+
+        if apt["status"] != "cancelled":
+            raise HTTPException(status_code=400, detail="Only cancelled appointments can be restored.")
+
+        # Check for conflicts with any other non-cancelled appointment in the same slot
+        overlaps = (
+            supabase.table("appointments")
+            .select("id")
+            .neq("id", id)
+            .gte("end_time", apt["start_time"])
+            .lte("start_time", apt["end_time"])
+            .neq("status", "cancelled")
+            .execute()
         )
+
+        if overlaps.data:
+            raise HTTPException(
+                status_code=409,
+                detail="This time slot has since been booked by another appointment.",
+            )
+
+        updated = (
+            supabase.table("appointments")
+            .update({"status": "confirmed"})
+            .eq("id", id)
+            .execute()
+        )
+
+        if not updated.data:
+            raise HTTPException(status_code=404, detail="Appointment not found")
+
+        return _to_response(updated.data[0])
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{id}/permanent")
+async def permanently_delete_appointment(id: str) -> dict:
+    """Permanently remove an appointment row from the database. Cannot be undone."""
+    supabase = get_supabase()
+
+    try:
+        result = supabase.table("appointments").delete().eq("id", id).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Appointment not found")
+
+        return {"message": "Appointment permanently deleted"}
     except HTTPException:
         raise
     except Exception as e:

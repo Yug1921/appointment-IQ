@@ -6,7 +6,7 @@ import { Bot, X, Send, Trash2, CheckCircle, Calendar, Clock } from "lucide-react
 import { format, parseISO } from "date-fns";
 import { useChatStore } from "@/store/chatStore";
 import { useAppointmentStore } from "@/store/appointmentStore";
-import { sendChatMessage, ChatResponse, ChatMessage } from "@/lib/api";
+import { sendChatMessage, ChatResponse, ChatMessage, BookingIntent } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 // ── Typing dots ───────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ function TypingDots() {
 }
 
 // ── Booking confirmed card ────────────────────────────────────────────────────
-function BookingConfirmedCard({ intent }: { intent: any }) {
+function BookingConfirmedCard({ intent }: { intent: BookingIntent }) {
   if (!intent?.requested_datetime) return null;
   const dt = parseISO(intent.requested_datetime);
   return (
@@ -109,7 +109,7 @@ function MessageBubble({
   onSlotSelect,
 }: {
   msg: ChatMessage;
-  intent?: any;
+  intent?: BookingIntent;
   onSlotSelect: (text: string) => void;
 }) {
   const isUser = msg.role === "user";
@@ -139,7 +139,7 @@ function MessageBubble({
         {intent?.action === "confirm" && <BookingConfirmedCard intent={intent} />}
 
         {/* suggested slot chips */}
-        {intent?.action === "suggest" && intent?.suggested_slots?.length > 0 && (
+        {intent?.action === "suggest" && intent?.suggested_slots && intent.suggested_slots.length > 0 && (
           <SuggestedSlots slots={intent.suggested_slots} onSelect={onSlotSelect} />
         )}
 
@@ -157,7 +157,7 @@ export default function ChatWidget() {
   const { fetchAppointments } = useAppointmentStore();
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [intentMap, setIntentMap] = useState<Record<number, any>>({});
+  const [intentMap, setIntentMap] = useState<Record<number, BookingIntent>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const hasMessages = messages.length > 0;
@@ -198,7 +198,7 @@ export default function ChatWidget() {
 
       // store intent keyed to this assistant message index
       if (response.booking_intent) {
-        setIntentMap((prev) => ({ ...prev, [assistantIndex]: response.booking_intent }));
+        setIntentMap((prev) => ({ ...prev, [assistantIndex]: response.booking_intent as BookingIntent }));
         if (response.booking_intent.action === "confirm") {
           fetchAppointments();
         }

@@ -25,7 +25,7 @@ export type Appointment = {
 };
 
 export function subscribeToAppointments(
-  callback: (appointment: Appointment) => void
+  callback: (appointment: Appointment | null, eventType: string, oldId?: string) => void
 ) {
   const subscription = supabase
     .channel("appointments-channel")
@@ -37,8 +37,19 @@ export function subscribeToAppointments(
         table: "appointments",
       },
       (payload) => {
-        const newRecord = payload.new as Appointment;
-        callback(newRecord);
+        if (payload.eventType === "DELETE") {
+          callback(
+            null,
+            "DELETE",
+            (payload.old as { id?: string })?.id
+          );
+          return;
+        }
+
+        callback(
+          payload.new as Appointment,
+          payload.eventType
+        );
       }
     )
     .subscribe();

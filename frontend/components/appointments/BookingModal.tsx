@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { User, Mail, Briefcase, FileText, Clock, Calendar } from "lucide-react";
+import { User, Mail, Briefcase, FileText, Calendar } from "lucide-react";
 import { format, addMinutes, parseISO } from "date-fns";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
@@ -12,7 +12,6 @@ import {
   AvailableSlot,
   AppointmentCreate,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 interface BookingModalProps {
@@ -115,8 +114,9 @@ export default function BookingModal({
       await createAppointment(payload);
       toast.success("Appointment booked successfully");
       onSuccess();
-    } catch (err: any) {
-      if (err?.response?.status === 409) {
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
         setErrors({ time: "This slot is already booked. Please choose another time." });
       } else {
         toast.error("Failed to book appointment. Please try again.");
