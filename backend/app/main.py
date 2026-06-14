@@ -12,6 +12,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
+print("FRONTEND_URL =", settings.frontend_url)
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
