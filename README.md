@@ -14,13 +14,11 @@ AppointmentIQ is a full-stack appointment scheduling platform built for teams an
 |---|
 | <img width="1918" height="922" alt="image" src="https://github.com/user-attachments/assets/70f1e939-cf47-4e22-922d-cd6c5faf7530" />
  | <img width="1918" height="930" alt="image" src="https://github.com/user-attachments/assets/af0a6834-021d-490a-b2eb-41263d0b737d" />
- |
 
 | AI Assistant |  
 |---|
 | <img width="1918" height="923" alt="image" src="https://github.com/user-attachments/assets/9925aa53-aadb-4c43-bbf0-bde4f9e106a0" />
  | <img width="1918" height="927" alt="image" src="https://github.com/user-attachments/assets/ceeb7c6b-17c4-42d7-ae46-3b1aa1e56b12" />
- |
 
 | Delete & Retrival |  
 |---|
