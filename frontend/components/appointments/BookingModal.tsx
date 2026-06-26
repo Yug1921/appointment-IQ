@@ -59,10 +59,9 @@ export default function BookingModal({
 
   const effectiveDuration = durationMode === 0 ? parseInt(customDuration) || 30 : durationMode;
 
-  // fetch available slots when date or duration changes
   useEffect(() => {
     if (!date) return;
-    const fetch = async () => {
+    const fetchSlots = async () => {
       setLoadingSlots(true);
       try {
         const res = await getAvailableSlots(date, effectiveDuration);
@@ -73,7 +72,7 @@ export default function BookingModal({
         setLoadingSlots(false);
       }
     };
-    fetch();
+    fetchSlots();
   }, [date, effectiveDuration]);
 
   function validate(): boolean {
@@ -97,8 +96,12 @@ export default function BookingModal({
     setSubmitting(true);
     try {
       const [hours, minutes] = time.split(":").map(Number);
-      const startDate = new Date(date);
-      startDate.setHours(hours, minutes, 0, 0);
+      const [year, month, day] = date.split("-").map(Number);
+
+      // Use Date(year, month-1, day, h, m) — all local components, no UTC parsing.
+      // new Date("yyyy-mm-dd") parses as UTC midnight which causes a double timezone
+      // offset when combined with setHours() — this approach avoids that entirely.
+      const startDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
       const endDate = addMinutes(startDate, effectiveDuration);
 
       const payload: AppointmentCreate = {
@@ -137,7 +140,6 @@ export default function BookingModal({
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="New Appointment">
       <div className="flex flex-col gap-4">
-        {/* name + email */}
         <div className="grid grid-cols-2 gap-3">
           <Input
             label="Full name"
@@ -158,7 +160,6 @@ export default function BookingModal({
           />
         </div>
 
-        {/* purpose */}
         <Input
           label="Purpose"
           placeholder="e.g. Project review, Onboarding, Client meeting"
@@ -168,7 +169,6 @@ export default function BookingModal({
           error={errors.purpose}
         />
 
-        {/* date + duration */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium mb-2" style={{ color: "#F4F4F6" }}>
@@ -239,7 +239,6 @@ export default function BookingModal({
           </div>
         </div>
 
-        {/* time slot picker */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-sm font-medium" style={{ color: "#F4F4F6" }}>
@@ -255,11 +254,7 @@ export default function BookingModal({
           {loadingSlots ? (
             <div className="flex gap-2 flex-wrap">
               {[...Array(6)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-8 w-20 rounded-md animate-pulse"
-                  style={{ background: "#1A1A24" }}
-                />
+                <div key={i} className="h-8 w-20 rounded-md animate-pulse" style={{ background: "#1A1A24" }} />
               ))}
             </div>
           ) : availableSlots.length === 0 ? (
@@ -292,33 +287,23 @@ export default function BookingModal({
           {errors.time && <p className="mt-1.5 text-xs" style={{ color: "#EF4444" }}>{errors.time}</p>}
         </div>
 
-        {/* notes */}
         <div>
           <label className="block text-sm font-medium mb-2" style={{ color: "#F4F4F6" }}>
             Notes <span style={{ color: "#5A5A70" }}>(optional)</span>
           </label>
           <div className="relative">
-            <FileText
-              className="absolute left-3 top-3 pointer-events-none"
-              size={16}
-              style={{ color: "#9090A8" }}
-            />
+            <FileText className="absolute left-3 top-3 pointer-events-none" size={16} style={{ color: "#9090A8" }} />
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
               placeholder="Any additional context..."
               className="w-full pl-9 pr-3 py-2 rounded-md border text-sm resize-none transition-colors"
-              style={{
-                background: "#111118",
-                borderColor: "#2A2A38",
-                color: "#F4F4F6",
-              }}
+              style={{ background: "#111118", borderColor: "#2A2A38", color: "#F4F4F6" }}
             />
           </div>
         </div>
 
-        {/* actions */}
         <div className="flex gap-2 pt-1">
           <Button variant="ghost" className="flex-1" onClick={handleClose} disabled={submitting}>
             Cancel
