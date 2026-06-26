@@ -142,6 +142,8 @@ def parse_booking_intent(response_text: str):
                 dt = dt.replace(tzinfo=IST)
             requested_datetime = dt
 
+        duration_minutes = int(data.get("duration_minutes") or 30)
+
         intent = BookingIntent(
             action=data.get("action", "clarify"),
             name=data.get("name"),
@@ -149,6 +151,7 @@ def parse_booking_intent(response_text: str):
             purpose=data.get("purpose"),
             requested_datetime=requested_datetime,
             suggested_slots=suggested_slots,
+            duration_minutes=duration_minutes,
             message=data.get("message", response_text),
         )
         return intent, True
@@ -170,7 +173,8 @@ async def auto_create_appointment(intent: BookingIntent):
         return None
 
     supabase = get_supabase()
-    end_time = req_dt + timedelta(minutes=30)
+    duration = intent.duration_minutes or 30
+    end_time = req_dt + timedelta(minutes=duration)
 
     try:
         result = (
@@ -182,7 +186,7 @@ async def auto_create_appointment(intent: BookingIntent):
                 # Store as UTC ISO string — Supabase/PostgreSQL handles TIMESTAMPTZ correctly
                 "start_time": req_dt.astimezone(timezone.utc).isoformat(),
                 "end_time": end_time.astimezone(timezone.utc).isoformat(),
-                "duration_minutes": 30,
+                "duration_minutes": duration,
                 "status": "confirmed",
                 "notes": None,
             })
@@ -374,7 +378,7 @@ Currently booked slots in the next 7 days (times shown in IST):
 
 Your job:
 - Understand the user's intent from natural language: booking, checking availability, or cancelling
-- For BOOKING: extract name, email, purpose, preferred date and time. Check availability above. If available, confirm. If not, suggest up to 3 nearest alternative free slots.
+- For BOOKING: extract name, email, purpose, preferred date, time, and duration in minutes. Common phrases: "1 hour" or "one hour" = 60, "30 min" = 30, "45 minutes" = 45, "2 hours" = 120. Default to 30 if not mentioned. Check availability above. If available, confirm. If not, suggest up to 3 nearest alternative free slots.
 - For CANCELLING: extract the email (required) and, if mentioned, the date/time of the appointment to cancel. Set action to "cancel".
 - If information is missing: ask for it politely with action "clarify"
 - Keep responses concise and professional
@@ -396,6 +400,7 @@ IMPORTANT: Always respond ONLY with this JSON object. No markdown fences, no ext
   "email": "string or null",
   "purpose": "string or null",
   "requested_datetime": "ISO8601 string with +05:30 offset or null",
+  "duration_minutes": 30,
   "suggested_slots": ["ISO8601 string with +05:30 offset"] or null,
   "message": "Your conversational reply to the user"
 }}

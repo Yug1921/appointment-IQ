@@ -51,4 +51,5 @@ class BookingIntent(BaseModel):
     purpose: Optional[str] = None
     requested_datetime: Optional[datetime] = None
     suggested_slots: Optional[List[datetime]] = None
+    duration_minutes: int = 30  # extracted from user message, default 30
     message: str
