@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import httpx
 import json
 import asyncio
@@ -16,6 +16,9 @@ from app.config import get_settings
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+# IST timezone — used throughout to ensure all times are stored and displayed correctly
+IST = timezone(timedelta(hours=5, minutes=30))
+
 # Model cascade — Gemma is the most reliable, so it gets multiple retries
 # before falling back to other models. (model, retries_on_429, wait_between_retries)
 MODEL_CONFIG = [
@@ -24,14 +27,13 @@ MODEL_CONFIG = [
     ("qwen/qwen3-next-80b-a3b-instruct:free", 1, 0),
 ]
 
-# How many times to retry the FULL cascade if every model returns 429
 MAX_CASCADE_RETRIES = 2
-CASCADE_RETRY_WAIT = 8  # seconds between full cascade passes
+CASCADE_RETRY_WAIT = 8
 
 
 def get_booked_slots_formatted(days_ahead: int = 7) -> str:
     supabase = get_supabase()
-    now = datetime.utcnow()
+    now = datetime.now(IST)
     future = now + timedelta(days=days_ahead)
     result = (
         supabase.table("appointments")
@@ -46,14 +48,23 @@ def get_booked_slots_formatted(days_ahead: int = 7) -> str:
         return "No appointments booked yet."
     formatted = []
     for apt in appointments:
+        # Convert stored UTC time to IST for display in the prompt
+        start_utc = datetime.fromisoformat(apt["start_time"].replace("Z", "+00:00"))
+        start_ist = start_utc.astimezone(IST)
+        end_utc = datetime.fromisoformat(apt["end_time"].replace("Z", "+00:00"))
+        end_ist = end_utc.astimezone(IST)
         formatted.append(
-            f"- {apt['start_time']} to {apt['end_time']}: {apt['purpose']} (with {apt.get('name','?')}, email: {apt.get('email','?')}, id: {apt['id']})"
+            f"- {start_ist.strftime('%Y-%m-%d %H:%M IST')} to {end_ist.strftime('%H:%M IST')}: "
+            f"{apt['purpose']} (with {apt.get('name','?')}, email: {apt.get('email','?')}, id: {apt['id']})"
         )
     return "\n".join(formatted)
 
 
 def is_slot_free(requested_dt: datetime, duration_minutes: int = 30) -> bool:
     supabase = get_supabase()
+    # Ensure timezone-aware for comparison
+    if requested_dt.tzinfo is None:
+        requested_dt = requested_dt.replace(tzinfo=IST)
     end_dt = requested_dt + timedelta(minutes=duration_minutes)
     result = (
         supabase.table("appointments")
@@ -67,6 +78,8 @@ def is_slot_free(requested_dt: datetime, duration_minutes: int = 30) -> bool:
 
 
 def get_next_free_slots(from_dt: datetime, count: int = 3, duration: int = 30) -> list:
+    if from_dt.tzinfo is None:
+        from_dt = from_dt.replace(tzinfo=IST)
     slots = []
     candidate = from_dt.replace(second=0, microsecond=0)
     if candidate <= from_dt:
@@ -74,14 +87,16 @@ def get_next_free_slots(from_dt: datetime, count: int = 3, duration: int = 30) -
     attempts = 0
     while len(slots) < count and attempts < 96:
         attempts += 1
-        if candidate.weekday() >= 5:
-            days_ahead = 7 - candidate.weekday()
+        # Work in IST for business hours logic
+        candidate_ist = candidate.astimezone(IST)
+        if candidate_ist.weekday() >= 5:
+            days_ahead = 7 - candidate_ist.weekday()
             candidate = (candidate + timedelta(days=days_ahead)).replace(hour=9, minute=0)
             continue
-        if candidate.hour < 9:
+        if candidate_ist.hour < 9:
             candidate = candidate.replace(hour=9, minute=0)
             continue
-        if candidate.hour >= 18:
+        if candidate_ist.hour >= 18:
             candidate = (candidate + timedelta(days=1)).replace(hour=9, minute=0)
             continue
         if is_slot_free(candidate, duration):
@@ -101,7 +116,6 @@ def parse_booking_intent(response_text: str):
             if part.startswith("{"):
                 cleaned = part
                 break
-    # find first { to last }
     start = cleaned.find("{")
     end = cleaned.rfind("}")
     if start != -1 and end != -1:
@@ -110,15 +124,24 @@ def parse_booking_intent(response_text: str):
         data = json.loads(cleaned)
         suggested_slots = None
         if data.get("suggested_slots"):
-            suggested_slots = [
-                datetime.fromisoformat(s.replace("Z", "+00:00"))
-                for s in data["suggested_slots"]
-            ]
+            suggested_slots = []
+            for s in data["suggested_slots"]:
+                dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                # If no tzinfo, treat as IST (LLM output is in IST per system prompt)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=IST)
+                suggested_slots.append(dt)
+
         requested_datetime = None
         if data.get("requested_datetime"):
-            requested_datetime = datetime.fromisoformat(
+            dt = datetime.fromisoformat(
                 data["requested_datetime"].replace("Z", "+00:00")
             )
+            # If LLM returned a naive datetime, treat it as IST
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=IST)
+            requested_datetime = dt
+
         intent = BookingIntent(
             action=data.get("action", "clarify"),
             name=data.get("name"),
@@ -137,10 +160,18 @@ def parse_booking_intent(response_text: str):
 async def auto_create_appointment(intent: BookingIntent):
     if not all([intent.name, intent.email, intent.purpose, intent.requested_datetime]):
         return None
-    if not is_slot_free(intent.requested_datetime, 30):
+
+    # Ensure timezone-aware; treat naive as IST
+    req_dt = intent.requested_datetime
+    if req_dt.tzinfo is None:
+        req_dt = req_dt.replace(tzinfo=IST)
+
+    if not is_slot_free(req_dt, 30):
         return None
+
     supabase = get_supabase()
-    end_time = intent.requested_datetime + timedelta(minutes=30)
+    end_time = req_dt + timedelta(minutes=30)
+
     try:
         result = (
             supabase.table("appointments")
@@ -148,8 +179,9 @@ async def auto_create_appointment(intent: BookingIntent):
                 "name": intent.name,
                 "email": intent.email,
                 "purpose": intent.purpose,
-                "start_time": intent.requested_datetime.isoformat(),
-                "end_time": end_time.isoformat(),
+                # Store as UTC ISO string — Supabase/PostgreSQL handles TIMESTAMPTZ correctly
+                "start_time": req_dt.astimezone(timezone.utc).isoformat(),
+                "end_time": end_time.astimezone(timezone.utc).isoformat(),
                 "duration_minutes": 30,
                 "status": "confirmed",
                 "notes": None,
@@ -175,9 +207,8 @@ async def auto_create_appointment(intent: BookingIntent):
 
 
 def find_cancellable_appointments(intent: BookingIntent) -> list:
-    """Find non-cancelled, upcoming appointments matching email (and optionally datetime)."""
     supabase = get_supabase()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     query = (
         supabase.table("appointments")
@@ -194,12 +225,15 @@ def find_cancellable_appointments(intent: BookingIntent) -> list:
     result = query.order("start_time").execute()
     appointments = result.data or []
 
-    # if a specific datetime was mentioned, narrow down to the closest match (same day)
     if intent.requested_datetime and appointments:
-        target_date = intent.requested_datetime.date()
+        req_dt = intent.requested_datetime
+        if req_dt.tzinfo is None:
+            req_dt = req_dt.replace(tzinfo=IST)
+        target_date = req_dt.astimezone(IST).date()
         same_day = [
             a for a in appointments
-            if datetime.fromisoformat(a["start_time"].replace("Z", "+00:00")).date() == target_date
+            if datetime.fromisoformat(a["start_time"].replace("Z", "+00:00"))
+               .astimezone(IST).date() == target_date
         ]
         if same_day:
             appointments = same_day
@@ -208,14 +242,6 @@ def find_cancellable_appointments(intent: BookingIntent) -> list:
 
 
 async def auto_cancel_appointment(intent: BookingIntent) -> dict:
-    """
-    Attempt to cancel an appointment based on AI-extracted intent.
-    Returns a dict describing the outcome:
-      {"status": "cancelled", "appointment": {...}}
-      {"status": "not_found"}
-      {"status": "multiple", "appointments": [...]}
-      {"status": "missing_info"}
-    """
     if not intent.email and not intent.name:
         return {"status": "missing_info"}
 
@@ -238,7 +264,6 @@ async def auto_cancel_appointment(intent: BookingIntent) -> dict:
 
 
 def _call_single_model(model: str, messages: list, headers: dict) -> tuple:
-    """Single API call. Returns (content, status_code, error_msg)."""
     payload = {
         "model": model,
         "messages": messages,
@@ -271,7 +296,6 @@ def _call_single_model(model: str, messages: list, headers: dict) -> tuple:
 
 
 def _try_models_once(messages: list, settings) -> tuple:
-    """One pass through MODEL_CONFIG. Returns (content, last_error). content is None if all failed."""
     headers = {
         "Authorization": f"Bearer {settings.openrouter_api_key}",
         "Content-Type": "application/json",
@@ -299,7 +323,7 @@ def _try_models_once(messages: list, settings) -> tuple:
             if status in (400, 404):
                 print(f"[chat] {status} on {model} — unavailable, skipping model")
                 last_error = f"{status} on {model}"
-                break  # don't retry this model, move to next
+                break
 
             if status >= 500:
                 print(f"[chat] {status} on {model} — retrying once...")
@@ -321,22 +345,14 @@ def time_module_sleep(seconds):
 
 
 async def call_openrouter(messages: list, settings) -> str:
-    """
-    Run the model cascade. If every model in a pass returns 429 (all free tiers
-    exhausted momentarily), wait and retry the whole cascade up to
-    MAX_CASCADE_RETRIES times before giving up.
-    """
     last_error = None
-
     for attempt in range(MAX_CASCADE_RETRIES):
         if attempt > 0:
-            print(f"[chat] all models busy — waiting {CASCADE_RETRY_WAIT}s before retrying cascade (attempt {attempt + 1}/{MAX_CASCADE_RETRIES})")
+            print(f"[chat] all models busy — waiting {CASCADE_RETRY_WAIT}s (attempt {attempt + 1}/{MAX_CASCADE_RETRIES})")
             await asyncio.sleep(CASCADE_RETRY_WAIT)
-
         content, last_error = _try_models_once(messages, settings)
         if content is not None:
             return content
-
     raise HTTPException(
         status_code=503,
         detail=f"AI service is busy right now. Last error: {last_error}. Please try again in a moment.",
@@ -348,11 +364,12 @@ async def chat_message(request: ChatRequest) -> ChatResponse:
     settings = get_settings()
     try:
         booked_slots_str = get_booked_slots_formatted()
-        current_time = datetime.utcnow().strftime("%A, %B %d %Y %H:%M UTC")
+        # Always show current time in IST so the LLM reasons in IST
+        current_time_ist = datetime.now(IST).strftime("%A, %B %d %Y %H:%M IST")
 
-        system_prompt = f"""You are AppointmentIQ, an intelligent booking assistant for a corporate office. Today is {current_time}. Business hours are 9:00 AM to 6:00 PM, Monday to Friday.
+        system_prompt = f"""You are AppointmentIQ, an intelligent booking assistant for a corporate office. Today is {current_time_ist}. Business hours are 9:00 AM to 6:00 PM IST, Monday to Friday.
 
-Currently booked slots in the next 7 days (each shows time range, purpose, person, email, and id):
+Currently booked slots in the next 7 days (times shown in IST):
 {booked_slots_str}
 
 Your job:
@@ -362,26 +379,29 @@ Your job:
 - If information is missing: ask for it politely with action "clarify"
 - Keep responses concise and professional
 
+TIMEZONE: All times are in IST (UTC+5:30). When a user says "4 PM", treat it as 4:00 PM IST.
+Output requested_datetime and suggested_slots as ISO8601 strings WITH the IST offset: e.g. "2026-06-26T16:00:00+05:30"
+
 CRITICAL — MULTI-TURN MEMORY:
 - ALWAYS review the full conversation history before responding, not just the latest message.
 - If earlier messages already contain the name, email, or purpose for the CURRENT booking attempt, carry those values forward into your JSON response even if the latest message doesn't repeat them.
-- If the user's latest message only specifies a new date/time (e.g. "Book me Jun 16 at 2:30 PM" after you suggested alternatives), treat this as continuing the SAME booking: reuse the name/email/purpose already collected in this conversation and combine them with the new date/time.
-- Only ask for name, email, or purpose if they have NEVER been provided anywhere in this conversation for the current booking.
-- When you have all four fields (name, email, purpose, datetime) — from this message OR earlier ones combined — set action to "confirm" immediately.
+- If the user's latest message only specifies a new date/time, treat this as continuing the SAME booking: reuse name/email/purpose already collected.
+- Only ask for name, email, or purpose if they have NEVER been provided anywhere in this conversation.
+- When you have all four fields (name, email, purpose, datetime) — set action to "confirm" immediately.
 
-IMPORTANT: Always respond ONLY with this JSON object. No markdown fences, no extra text before or after:
+IMPORTANT: Always respond ONLY with this JSON object. No markdown fences, no extra text:
 {{
   "action": "confirm",
   "name": "string or null",
   "email": "string or null",
   "purpose": "string or null",
-  "requested_datetime": "ISO8601 string or null",
-  "suggested_slots": ["ISO8601 string"] or null,
+  "requested_datetime": "ISO8601 string with +05:30 offset or null",
+  "suggested_slots": ["ISO8601 string with +05:30 offset"] or null,
   "message": "Your conversational reply to the user"
 }}
 action must be exactly one of: confirm, suggest, clarify, cancel
 
-For cancel requests, "email" is required to identify the appointment. "requested_datetime" is optional — include it only if the user specified which date/time appointment to cancel."""
+For cancel requests, "email" is required. "requested_datetime" is optional."""
 
         messages = [{"role": "system", "content": system_prompt}]
         for msg in (request.conversation_history or []):
@@ -399,7 +419,8 @@ For cancel requests, "email" is required to identify the appointment. "requested
                 intent.action = "suggest"
                 intent.suggested_slots = [datetime.fromisoformat(s) for s in alternatives]
                 intent.message = "That slot is no longer available. Here are the next free times: " + ", ".join(
-                    datetime.fromisoformat(s).strftime("%b %d at %I:%M %p") for s in alternatives
+                    datetime.fromisoformat(s).astimezone(IST).strftime("%b %d at %I:%M %p IST")
+                    for s in alternatives
                 )
 
         elif is_valid and intent.action == "cancel":
@@ -410,37 +431,33 @@ For cancel requests, "email" is required to identify the appointment. "requested
                     "To cancel an appointment, I'll need the email address it was booked under. "
                     "Could you share that?"
                 )
-
             elif result["status"] == "not_found":
                 who = intent.email or intent.name or "that person"
                 intent.message = f"I couldn't find an upcoming appointment for {who}. Could you double check the email or date?"
-
             elif result["status"] == "multiple":
                 apts = result["appointments"]
                 lines = []
                 for a in apts:
-                    dt = datetime.fromisoformat(a["start_time"].replace("Z", "+00:00"))
-                    lines.append(f"- {a['purpose']} on {dt.strftime('%b %d at %I:%M %p')}")
+                    dt = datetime.fromisoformat(a["start_time"].replace("Z", "+00:00")).astimezone(IST)
+                    lines.append(f"- {a['purpose']} on {dt.strftime('%b %d at %I:%M %p IST')}")
                 intent.message = (
                     "I found multiple upcoming appointments for that email. "
                     "Could you tell me the date or time of the one you'd like to cancel?\n"
                     + "\n".join(lines)
                 )
-
             elif result["status"] == "cancelled":
                 apt = result["appointment"]
-                dt = datetime.fromisoformat(apt["start_time"].replace("Z", "+00:00"))
+                dt = datetime.fromisoformat(apt["start_time"].replace("Z", "+00:00")).astimezone(IST)
                 intent.message = (
                     f"Done — your appointment \"{apt['purpose']}\" on "
-                    f"{dt.strftime('%A, %b %d at %I:%M %p')} has been cancelled."
+                    f"{dt.strftime('%A, %b %d at %I:%M %p IST')} has been cancelled."
                 )
-
-            else:  # error
+            else:
                 intent.message = "Something went wrong while cancelling. Please try again or use the Appointments page directly."
 
         new_history = list(request.conversation_history or [])
-        new_history.append(ChatMessage(role="user", content=request.message, timestamp=datetime.utcnow()))
-        new_history.append(ChatMessage(role="assistant", content=intent.message, timestamp=datetime.utcnow()))
+        new_history.append(ChatMessage(role="user", content=request.message, timestamp=datetime.now(IST)))
+        new_history.append(ChatMessage(role="assistant", content=intent.message, timestamp=datetime.now(IST)))
 
         return ChatResponse(
             reply=intent.message,
