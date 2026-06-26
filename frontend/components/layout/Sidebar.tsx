@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -27,32 +27,75 @@ export const Sidebar: React.FC = () => {
   const pathname = usePathname();
   const toggleChat = useChatStore((state) => state.toggleChat);
 
+  // Sync main content margin when sidebar collapses/expands
+  useEffect(() => {
+    const main = document.getElementById("main-content");
+    if (main) {
+      main.style.marginLeft = isExpanded ? "224px" : "80px";
+    }
+  }, [isExpanded]);
+
   return (
     <div
-      className={cn(
-        "fixed left-0 top-0 h-full bg-bg-surface border-r border-border-DEFAULT transition-all duration-300 z-30",
-        isExpanded ? "w-56" : "w-20"
-      )}
+      className="fixed left-0 top-0 h-full flex flex-col z-30 transition-all duration-300"
+      style={{
+        width: isExpanded ? 224 : 80,
+        background: "#111118",
+        borderRight: "1px solid #2A2A38",
+      }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between h-20 px-4 border-b border-border-DEFAULT">
+      <div
+        className="flex items-center justify-between px-4 shrink-0"
+        style={{
+          height: 64,
+          borderBottom: "1px solid #2A2A38",
+          justifyContent: isExpanded ? "space-between" : "center",
+        }}
+      >
         {isExpanded && (
-          <h1 className="text-lg font-heading text-primary-DEFAULT">AiQ</h1>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold"
+              style={{ background: "#6366F1", color: "#fff" }}
+            >
+              A
+            </div>
+            <span
+              className="font-semibold text-sm"
+              style={{ color: "#F4F4F6", letterSpacing: "-0.01em" }}
+            >
+              AppointmentIQ
+            </span>
+          </div>
+        )}
+        {!isExpanded && (
+          <div
+            className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold"
+            style={{ background: "#6366F1", color: "#fff" }}
+          >
+            A
+          </div>
         )}
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="p-1.5 hover:bg-bg-elevated rounded-md transition-colors text-text-secondary"
+          className="p-1.5 rounded-md transition-colors"
+          style={{ color: "#5A5A70" }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = "#1A1A24";
+            (e.currentTarget as HTMLElement).style.color = "#F4F4F6";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.background = "transparent";
+            (e.currentTarget as HTMLElement).style.color = "#5A5A70";
+          }}
         >
-          {isExpanded ? (
-            <ChevronLeft className="h-5 w-5" />
-          ) : (
-            <ChevronRight className="h-5 w-5" />
-          )}
+          {isExpanded ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 py-4 space-y-1">
+      <nav className="flex-1 px-2 py-4 flex flex-col gap-1">
         {navItems.map((item) => {
           const isActive =
             pathname === item.href ||
@@ -63,33 +106,57 @@ export const Sidebar: React.FC = () => {
             <Link
               key={item.href}
               href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-200",
-                isActive
-                  ? "bg-primary-DEFAULT text-white"
-                  : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
-              )}
               title={!isExpanded ? item.label : undefined}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-150"
+              style={{
+                background: isActive ? "#6366F1" : "transparent",
+                color: isActive ? "#fff" : "#9090A8",
+                justifyContent: isExpanded ? "flex-start" : "center",
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  (e.currentTarget as HTMLElement).style.background = "#1A1A24";
+                  (e.currentTarget as HTMLElement).style.color = "#F4F4F6";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                  (e.currentTarget as HTMLElement).style.color = "#9090A8";
+                }
+              }}
             >
-              <Icon className="h-5 w-5 flex-shrink-0" />
-              {isExpanded && <span className="text-sm font-medium">{item.label}</span>}
+              <Icon size={17} className="shrink-0" />
+              {isExpanded && (
+                <span className="text-sm font-medium">{item.label}</span>
+              )}
             </Link>
           );
         })}
       </nav>
 
       {/* AI Assistant Button */}
-      <div className="p-2 border-t border-border-DEFAULT">
+      <div className="px-2 py-3 shrink-0" style={{ borderTop: "1px solid #2A2A38" }}>
         <button
           onClick={toggleChat}
-          className={cn(
-            "w-full flex items-center gap-3 px-3 py-2 rounded-md bg-primary-DEFAULT/20 hover:bg-primary-DEFAULT/30 text-primary-DEFAULT transition-colors",
-            !isExpanded && "justify-center"
-          )}
           title={!isExpanded ? "AI Assistant" : undefined}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors"
+          style={{
+            background: "rgba(99,102,241,0.12)",
+            color: "#6366F1",
+            justifyContent: isExpanded ? "flex-start" : "center",
+          }}
+          onMouseEnter={(e) =>
+            ((e.currentTarget as HTMLElement).style.background = "rgba(99,102,241,0.22)")
+          }
+          onMouseLeave={(e) =>
+            ((e.currentTarget as HTMLElement).style.background = "rgba(99,102,241,0.12)")
+          }
         >
-          <MessageSquare className="h-5 w-5 flex-shrink-0" />
-          {isExpanded && <span className="text-sm font-medium">AI Assistant</span>}
+          <MessageSquare size={17} className="shrink-0" />
+          {isExpanded && (
+            <span className="text-sm font-medium">AI Assistant</span>
+          )}
         </button>
       </div>
     </div>

@@ -50,7 +50,10 @@ function DetailRow({
         >
           {label}
         </p>
-        <p className="text-sm font-medium break-words" style={{ color: "#F4F4F6" }}>
+        <p
+          className="text-sm font-medium break-words"
+          style={{ color: "#F4F4F6" }}
+        >
           {value}
         </p>
       </div>
@@ -99,6 +102,9 @@ export default function AppointmentDetail({
     }
   }
 
+  const showActions =
+    appointment.status !== "cancelled" && appointment.status !== "completed";
+
   return (
     <AnimatePresence>
       {/* overlay */}
@@ -109,45 +115,49 @@ export default function AppointmentDetail({
         exit={{ opacity: 0 }}
         transition={{ duration: 0.2 }}
         className="fixed inset-0 z-40"
-        style={{ background: "rgba(0,0,0,0.4)" }}
+        style={{ background: "rgba(0,0,0,0.45)" }}
         onClick={onClose}
       />
 
-      {/* panel */}
+      {/* panel — full height, flex column, nothing overflows outside */}
       <motion.div
         key="panel"
         initial={{ x: 420, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: 420, opacity: 0 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed top-0 right-0 h-full z-50 flex flex-col"
+        className="fixed top-0 right-0 z-50 flex flex-col"
         style={{
           width: 400,
+          height: "100dvh", // use dynamic viewport height — handles mobile chrome bar
           background: "#111118",
           borderLeft: "1px solid #2A2A38",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* header */}
+        {/* ── header (shrink-0) ── */}
         <div
-          className="flex items-center justify-between px-6 py-5 shrink-0"
+          className="shrink-0 flex items-center justify-between px-5 py-4"
           style={{ borderBottom: "1px solid #2A2A38" }}
         >
           <div>
             <p
-              className="text-xs mb-1"
+              className="text-xs mb-1 font-medium"
               style={{
                 color: "#5A5A70",
                 letterSpacing: "0.08em",
                 textTransform: "uppercase",
-                fontWeight: 500,
               }}
             >
               Appointment
             </p>
             <h2
               className="font-semibold"
-              style={{ fontSize: 16, color: "#F4F4F6", letterSpacing: "-0.01em" }}
+              style={{
+                fontSize: 16,
+                color: "#F4F4F6",
+                letterSpacing: "-0.01em",
+              }}
             >
               {appointment.name}
             </h2>
@@ -172,13 +182,16 @@ export default function AppointmentDetail({
           </div>
         </div>
 
-        {/* body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
-          {/* details */}
+        {/* ── scrollable body (flex-1 overflow-y-auto) ── */}
+        <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-5 min-h-0">
           <div className="flex flex-col gap-4">
             <DetailRow icon={User} label="Name" value={appointment.name} />
             <DetailRow icon={Mail} label="Email" value={appointment.email} />
-            <DetailRow icon={Briefcase} label="Purpose" value={appointment.purpose} />
+            <DetailRow
+              icon={Briefcase}
+              label="Purpose"
+              value={appointment.purpose}
+            />
             <DetailRow
               icon={Calendar}
               label="Date"
@@ -194,21 +207,35 @@ export default function AppointmentDetail({
               label="Duration"
               value={
                 appointment.duration_minutes >= 60
-                  ? `${Math.floor(appointment.duration_minutes / 60)}h ${appointment.duration_minutes % 60 > 0 ? `${appointment.duration_minutes % 60}m` : ""}`.trim()
+                  ? `${Math.floor(appointment.duration_minutes / 60)}h${
+                      appointment.duration_minutes % 60 > 0
+                        ? ` ${appointment.duration_minutes % 60}m`
+                        : ""
+                    }`
                   : `${appointment.duration_minutes} min`
               }
             />
             {appointment.notes && (
-              <DetailRow icon={FileText} label="Notes" value={appointment.notes} />
+              <DetailRow
+                icon={FileText}
+                label="Notes"
+                value={appointment.notes}
+              />
             )}
           </div>
 
-          {/* created at */}
           <p className="text-xs" style={{ color: "#5A5A70" }}>
-            Created {format(parseISO(appointment.created_at), "MMM d, yyyy 'at' h:mm a")}
+            Created{" "}
+            {format(parseISO(appointment.created_at), "MMM d, yyyy 'at' h:mm a")}
           </p>
+        </div>
 
-          {/* cancel confirm inline */}
+        {/* ── footer (shrink-0, always visible) ── */}
+        <div
+          className="shrink-0 px-5 py-4 flex flex-col gap-2"
+          style={{ borderTop: "1px solid #2A2A38" }}
+        >
+          {/* Cancel confirm — expands inside footer, pushes buttons down */}
           <AnimatePresence>
             {confirming && (
               <motion.div
@@ -218,14 +245,21 @@ export default function AppointmentDetail({
                 className="overflow-hidden"
               >
                 <div
-                  className="rounded-lg p-4 flex flex-col gap-3"
-                  style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }}
+                  className="rounded-lg p-3.5 flex flex-col gap-3 mb-2"
+                  style={{
+                    background: "rgba(239,68,68,0.08)",
+                    border: "1px solid rgba(239,68,68,0.2)",
+                  }}
                 >
                   <div className="flex items-start gap-2">
-                    <AlertTriangle size={15} style={{ color: "#EF4444", marginTop: 1, flexShrink: 0 }} />
+                    <AlertTriangle
+                      size={14}
+                      style={{ color: "#EF4444", marginTop: 1, flexShrink: 0 }}
+                    />
                     <p className="text-sm" style={{ color: "#F4F4F6" }}>
-                      Cancel this appointment with{" "}
-                      <span className="font-medium">{appointment.name}</span>? This cannot be undone.
+                      Cancel appointment with{" "}
+                      <span className="font-medium">{appointment.name}</span>?
+                      This cannot be undone.
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -252,31 +286,27 @@ export default function AppointmentDetail({
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
 
-        {/* footer actions */}
-        <div
-          className="px-6 py-5 flex flex-col gap-2 shrink-0"
-          style={{ borderTop: "1px solid #2A2A38" }}
-        >
+          {/* Action buttons */}
           {appointment.status === "confirmed" && (
             <Button
               variant="secondary"
               className="w-full"
               loading={loadingComplete}
               onClick={handleMarkComplete}
+              disabled={confirming}
             >
               <CheckCircle size={15} />
               Mark as Completed
             </Button>
           )}
 
-          {appointment.status !== "cancelled" && appointment.status !== "completed" && (
+          {showActions && !confirming && (
             <Button
               variant="danger"
               className="w-full"
               onClick={() => setConfirming(true)}
-              disabled={confirming || loadingComplete}
+              disabled={loadingComplete}
             >
               <XCircle size={15} />
               Cancel Appointment
